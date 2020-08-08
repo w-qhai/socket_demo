@@ -34,27 +34,28 @@ int main(int argc, char** argv) {
         else if (pid == 0) {
             close(sock);
             do_service(conn, &peer_addr);
+            close(conn);
+            exit(EXIT_SUCCESS);
         }
         else {
             close(conn);
         }
     }
+    close(sock);
     return 0;
 }
 
 void do_service(int conn, sockaddr_in* peer) {
     char recv_buf[1024] = { 0 };
     char ip[INET_ADDRSTRLEN] = { 0 };
-    while (true) {
-        int recv_len = recv(conn, recv_buf, sizeof(recv_buf), 0);
-        std::cout << inet_ntop(AF_INET, &peer->sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer->sin_port) << ": ";
-        if (recv_len <= 0) {
-            std::cout << "closed connection." << std::endl;
-        }
-        else {
-            std::cout << recv_buf << std::endl;
-        }
+    int recv_len;
+
+    while ((recv_len = recv(conn, recv_buf, sizeof(recv_buf), 0)) > 0) {
+        std::cout << inet_ntop(AF_INET, &peer->sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer->sin_port) <<
+            ": " << recv_buf << std::endl;
         send(conn, recv_buf, strlen(recv_buf), 0);
         memset(recv_buf, 0, sizeof(recv_buf));
     }
+    std::cout << inet_ntop(AF_INET, &peer->sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer->sin_port) <<
+        "closed connection." << std::endl;
 }
