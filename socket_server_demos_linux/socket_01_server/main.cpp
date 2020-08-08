@@ -1,9 +1,13 @@
 ﻿#include <iostream>
 #include <cstring>
+#include <thread>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+
+void do_service(int conn, sockaddr_in& peer);
+void do_recv(int conn, sockaddr_in& peer);
 
 int main(int argc, char** argv) {
 
@@ -24,25 +28,30 @@ int main(int argc, char** argv) {
     socklen_t peer_len = sizeof(peer_addr);
 
     int conn = accept(sock, reinterpret_cast<sockaddr*>(&peer_addr), &peer_len);
-    char recv_buf[1024] = { 0 };
-    char ip[INET_ADDRSTRLEN];
-
-    std::cout << inet_ntop(AF_INET, &peer_addr.sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer_addr.sin_port) << ": " << std::endl;
-    while (true) {
-        int recv_len = recv(conn, recv_buf, sizeof(recv_buf), 0);
-        std::cout << recv_len << std::endl;
-        if (recv_len <= 0) {
-            std::cout << "closed connection." << std::endl;
-            break;
-        }
-        else {
-            std::cout << recv_buf << std::endl;
-        }
-        send(conn, recv_buf, recv_len, 0);
-        memset(recv_buf, 0, sizeof(recv_buf));
-    }
-
+    do_service(conn, peer_addr);
     close(conn);
     close(sock);
     return 0;
+}
+
+void do_service(int conn, sockaddr_in& peer) {
+    std::thread recv_thread(do_recv, conn, std::ref(peer));
+    recv_thread.detach();
+
+    char send_buf[1024];
+    while (std::cin.getline(send_buf, 1024)) {
+        send(conn, send_buf, strlen(send_buf), 0);
+    }
+
+}
+
+void do_recv(int conn, sockaddr_in& peer) {
+    char recv_buf[1024] = { 0 };
+    char ip[INET_ADDRSTRLEN];
+    int recv_len;
+    while ((recv_len = recv(conn, recv_buf, sizeof(recv_buf), 0)) > 0) {
+        std::cout << "[" << inet_ntop(AF_INET, &peer.sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer.sin_port) <<
+            "]:\t" << recv_buf << std::endl;
+        memset(recv_buf, 0, sizeof(recv_buf));
+    }
 }
