@@ -49,7 +49,7 @@ void do_recv(int conn, sockaddr_in& peer) {
     char ip[INET_ADDRSTRLEN];
     int recv_len;
     while ((recv_len = recv(conn, recv_buf, sizeof(recv_buf), 0)) > 0) {
-        std::cout << "[" << inet_ntop(AF_INET, &peer.sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer.sin_port) << "]:\t"
+        std::cout << "[" << inet_ntop(AF_INET, &peer.sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer.sin_port) << "]:\t" 
             << recv_buf << std::endl;
         memset(recv_buf, 0, sizeof(recv_buf));
     }
