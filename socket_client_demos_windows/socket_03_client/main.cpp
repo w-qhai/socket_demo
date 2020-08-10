@@ -5,6 +5,7 @@
 #include <ws2tcpip.h>
 #include <iostream>
 #include <thread>
+#include <cstdio>
 
 const int BUF_SIZE = 1024;
 
@@ -38,13 +39,44 @@ int main(int argc, char** argv) {
         std::cerr << "connect faild" << std::endl;
     }
 
-    std::thread recv_thread(do_recv, sock, std::ref(serve_addr));
-    recv_thread.detach();
+    fd_set rest;
+    FD_ZERO(&rest);
 
-    Packet packet;
-    while (std::cin.getline(packet.buf, BUF_SIZE)) {
-        packet.len = htonl(strlen(packet.buf) + 1);
-        send_packet(sock, &packet, sizeof(packet.len) + ntohl(packet.len), 0);
+    int fd_stdin = _fileno(stdin);
+    int max_fd = max(fd_stdin, sock);
+
+    while (true) {
+        FD_SET(fd_stdin, &rest);
+        FD_SET(sock, &rest);
+
+        int nready = select(sock + 1, &rest, nullptr, nullptr, nullptr);
+        if (nready == -1) {
+            int e = WSAGetLastError();
+            std::cerr << e << std::endl;
+            break;
+        }
+
+        if (nready == 0) {
+            continue;
+        }
+
+        if (FD_ISSET(sock, &rest)) {
+            Packet packet;
+            char ip[INET_ADDRSTRLEN];
+            sockaddr_in peer = serve_addr;
+
+            recv_packet(sock, &packet.len, sizeof(packet.len), 0);
+            recv_packet(sock, packet.buf, ntohl(packet.len), 0) >= ntohl(packet.len);
+            std::cout << "[" << inet_ntop(AF_INET, &peer.sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer.sin_port) << "]:\t"
+                << packet.buf << std::endl;
+        }
+
+        if (FD_ISSET(fd_stdin, &rest)) {
+            Packet packet;
+            std::cin.getline(packet.buf, BUF_SIZE);
+            packet.len = htonl(strlen(packet.buf) + 1);
+            send_packet(sock, &packet, sizeof(packet.len) + ntohl(packet.len), 0);
+        }
     }
 
     closesocket(sock);
@@ -58,7 +90,7 @@ void do_recv(int conn, sockaddr_in& peer) {
     char ip[INET_ADDRSTRLEN];
 
     while (recv_packet(conn, &packet.len, sizeof(packet.len), 0) >= 4 &&
-           recv_packet(conn, packet.buf, ntohl(packet.len), 0)   >= ntohl(packet.len)) {
+        recv_packet(conn, packet.buf, ntohl(packet.len), 0) >= ntohl(packet.len)) {
         std::cout << "[" << inet_ntop(AF_INET, &peer.sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer.sin_port) << "]:\t"
             << packet.buf << std::endl;
     }
