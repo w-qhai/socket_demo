@@ -35,29 +35,107 @@ int main(int argc, char** argv) {
     bind(sock, reinterpret_cast<sockaddr*>(&serve_addr), sizeof(serve_addr));
     listen(sock, SOMAXCONN);
 
-    sockaddr_in peer_addr;
-    socklen_t peer_len = sizeof(peer_addr);
+    // sockaddr_in peer_addr;
+    // socklen_t peer_len = sizeof(peer_addr);
 
-    char ip[INET_ADDRSTRLEN];
-    int conn = accept(sock, reinterpret_cast<sockaddr*>(&peer_addr), &peer_len);
-    std::cout << "[" << inet_ntop(AF_INET, &peer_addr.sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer_addr.sin_port) << "]: "
-            << "connected" << std::endl;
+    // do_service(conn, peer_addr);
 
-    do_service(conn, peer_addr);
-    close(conn);
+    int client[FD_SETSIZE];
+    sockaddr_in peer_addr[FD_SETSIZE];
+    socklen_t peer_len[FD_SETSIZE];
+    for (int i = 0; i < FD_SETSIZE; i++) {
+        client[i] = -1;
+    }
+    int max_fd = sock;
+    fd_set rset;
+    fd_set all_set;
+    FD_ZERO(&rset);
+    FD_ZERO(&all_set);
+
+    FD_SET(sock, &all_set);
+
+    while (true) {
+        rset = all_set;
+        int nready = select(max_fd + 1, &rset, nullptr, nullptr, nullptr);
+        
+        if (nready == -1) {
+            int err = errno;
+            if (err == EINTR) {
+                continue;
+            }
+            std::cout << strerror(err) << std::endl;
+            break;
+        }
+
+        if (nready == 0) {
+            continue;
+        }
+
+        if (FD_ISSET(sock, &rset)) {
+            char ip[INET_ADDRSTRLEN];
+            sockaddr_in peer;
+            socklen_t len = sizeof(peer);
+            int conn = accept(sock, reinterpret_cast<sockaddr*>(&peer), &len);
+            peer_addr[conn] = peer;
+            peer_len[conn] = len;
+            std::cout << "[" << inet_ntop(AF_INET, &peer_addr[conn].sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer_addr[conn].sin_port) << "]: "
+                << "connected" << std::endl;
+            for (int  i = 0; i < FD_SETSIZE; i++) {
+                if (client[i] == -1) {
+                    client[i] = conn;
+                    break;
+                }
+            }
+            FD_SET(conn, &all_set);
+            if (conn > max_fd) {
+                max_fd = conn;
+            }
+            if (--nready <= 0) {
+                continue;
+            }
+        }
+
+        for (int i = 0; i < FD_SETSIZE; i++) {
+            int conn = client[i];
+            if (conn == -1) {
+                continue;
+            }
+            if (FD_ISSET(conn, &rset)) {
+                Packet packet;
+                char ip[INET_ADDRSTRLEN];
+
+                int head_len = recv_packet(conn, &packet.len, sizeof(packet.len), 0);
+                if (head_len == 0) {
+                    std::cout << "[" << inet_ntop(AF_INET, &peer_addr[conn].sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer_addr[conn].sin_port) << "]: "
+                     << "closed connection." << std::endl;
+                    FD_CLR(conn, &all_set);
+                    continue;
+                }
+                int body_len = recv_packet(conn, packet.buf, ntohl(packet.len), 0);
+                if (body_len == 0) {
+                    std::cout << "[" << inet_ntop(AF_INET, &peer_addr[conn].sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer_addr[conn].sin_port) << "]: "
+                     << "closed connection." << std::endl;
+                    FD_CLR(conn, &all_set);
+                    client[i] = -1;
+                    close(conn);
+                    continue;
+                }
+           
+                std::cout << "[" << inet_ntop(AF_INET, &peer_addr[conn].sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer_addr[conn].sin_port) << "]: "
+                    <<  packet.buf << std::endl;
+                send_packet(conn, &packet, sizeof(packet.len) + ntohl(packet.len), 0);
+                if (--nready <= 0) {
+                    break;
+                }
+            }
+        }
+    }
     close(sock);
     return 0;
 }
 
 void do_service(int conn, sockaddr_in& peer) {
-    std::thread recv_thread(do_recv, conn, std::ref(peer));
-    recv_thread.detach();
-
-    Packet packet;
-    while (std::cin.getline(packet.buf, BUF_SIZE)) {
-        packet.len = htonl(strlen(packet.buf) + 1);
-        send_packet(conn, &packet, sizeof(packet.len) + ntohl(packet.len), 0);
-    }
+    
 }
 void do_recv(int conn, sockaddr_in& peer) {
     Packet packet;
