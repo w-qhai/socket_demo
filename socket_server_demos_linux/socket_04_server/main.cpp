@@ -14,9 +14,6 @@ struct Packet {
     char buf[BUF_SIZE] = { 0 };
 };
 
-void do_service(int conn, sockaddr_in& peer);
-void do_recv(int conn, sockaddr_in& peer);
-
 int send_packet(SOCKET sock, void* buf, int len, int flag);
 int recv_packet(SOCKET sock, void* buf, int len, int flag);
 
@@ -34,11 +31,6 @@ int main(int argc, char** argv) {
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
     bind(sock, reinterpret_cast<sockaddr*>(&serve_addr), sizeof(serve_addr));
     listen(sock, SOMAXCONN);
-
-    // sockaddr_in peer_addr;
-    // socklen_t peer_len = sizeof(peer_addr);
-
-    // do_service(conn, peer_addr);
 
     int client[FD_SETSIZE];
     sockaddr_in peer_addr[FD_SETSIZE];
@@ -134,19 +126,6 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-void do_service(int conn, sockaddr_in& peer) {
-    
-}
-void do_recv(int conn, sockaddr_in& peer) {
-    Packet packet;
-    char ip[INET_ADDRSTRLEN];
-
-    while (recv_packet(conn, &packet.len, sizeof(packet.len), 0) >= 4 &&
-           recv_packet(conn, packet.buf, ntohl(packet.len), 0)   >= ntohl(packet.len)) {
-        std::cout << "[" << inet_ntop(AF_INET, &peer.sin_addr.s_addr, ip, sizeof(ip)) << ":" << ntohs(peer.sin_port) << "]:\t"
-            << packet.buf << std::endl;
-    }
-}
 int send_packet(SOCKET sock, void* buf, int packet_size, int flag) {
     char* buf_ptr = reinterpret_cast<char*>(buf);
     int   sent_size = 0;
